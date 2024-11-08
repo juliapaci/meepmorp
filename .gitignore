@@ -1,2 +1,4 @@
 program.o
 program
+stb_image.o
+stb_image_wrapper*
