@@ -6,7 +6,7 @@ section .text
 load_arguments:
     ; offset by 16 because of call return address and alignment
     mov rax, [rsp + 16] ; argc
-    lea rbx, [rsp + 24] ; argv[0]
+    lea rbx, [rsp + 24] ; argv
 
     ret
 
@@ -45,16 +45,17 @@ _start:
     cmp rdi, 1
     je .end
 
-    push rbx
+    add rbx, 0x8    ; argv[0] -> argv[1] (because of char **)
+    push rbx        ; save argv[1] (image file name)
 
-    ; print argc
+    ; print argv[1]
     extern printf
-    mov rdi, fmt
-    mov rsi, rax
+    mov rdi, selected_file
+    mov rsi, [rbx]
     xor rax, rax
     call printf wrt ..plt
 
-    pop rdi         ; save argv[0] (image file name)
+    pop rdi         ; argv[1]
     call get_image_data
 
     pop rbp
@@ -65,4 +66,4 @@ _start:
     syscall
 
 section .data
-    fmt: db "%d", 0Ah, 0
+    selected_file: db "selected file %s", 0Ah, 0
