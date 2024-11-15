@@ -5,8 +5,8 @@ section .text
 ; moves argc to %rax and argv to %rbx
 load_arguments:
     ; offset by 16 because of call return address and alignment
-    mov rax, [rsp + 16] ; argc
-    lea rbx, [rsp + 24] ; argv
+    mov rax, [rsp + 0x10] ; argc
+    lea rbx, [rsp + 0x18] ; argv
 
     ret
 
@@ -16,17 +16,20 @@ get_image_data:
     push rbp
     mov rbp, rsp
 
-    lea rax, [rdi]
+    mov rax, rdi
 
+    sub rsp, 0x10
     ; load image data
     extern stbi_load    ; "stb_image.h"
-    lea rdi, [rax]      ; filename = argv[0]
+    mov rdi, [rax]      ; filename = argv[1]
     lea rsi, [rsp]      ; [ *x  ]   <- rsp
-    lea rdx, [rsp + 64] ; [ *y  ]   <- rsp + sizeof(size_t)
-    lea rcx, [rsp + 128]; [*comp]   <- rsp + 2*sizeof(size_t)
+    lea rdx, [rsp + 0x4]; [ *y  ]   <- rsp + sizeof(i32)
+    lea rcx, [rsp + 0x8]; [*comp]   <- rsp + 2*sizeof(i32)
     xor r8, r8          ; req_comp = 0
-    call stbi_load      ; rax = pixel byte buffer
+    call stbi_load      ; rex = pixel byte buffer
     ; TODO: check stb errors
+
+    add rsp, 0x10
 
     ; mov rax, 9          ; mmap
     ; xor rdi, rdi        ; addr = NULL
@@ -42,7 +45,7 @@ _start:
     call load_arguments
 
     ; exits if no image/options was supplied
-    cmp rdi, 1
+    cmp rax, 1
     je .end
 
     add rbx, 0x8    ; argv[0] -> argv[1] (because of char **)
