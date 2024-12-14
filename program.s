@@ -13,6 +13,99 @@ load_arguments:
 
     ret
 
+; https://en.wikipedia.org/wiki/HSL_and_HSV
+; args rgb (first 3 bytes of %rdi) to hsv
+; returned in (rax, rbx, rcx) -> (h, s, v)
+; hue in degrees [0, 360]
+rgb_to_hsv:
+    mov eax, edi
+    shr eax, 0x10 ; b
+    ; (dl, dh, al) -> (r, g, b)
+
+    xor bx, bx
+    ; %bl = min(r, g, b)
+    cmp dl, dh
+    cmovl bl, dl
+    cmp bl, al
+    cmovl bl, al
+    ; %bh = max(r, g, b)
+    cmp dl, dh
+    cmovg bh, dl
+    cmp bh, al
+    cmovg bh, al
+
+    ; %cl = delta hue (c)
+    mov cl, bh
+    sub cl, bl
+
+    ; Hue
+    cvtsi2sd xmm1, cl
+
+    cmp bh, bl
+    je .zero
+    cmp bh, dl
+    je .red
+    cmp bh, dh
+    je .green
+    cmp bh, al
+    je .blue
+
+    .zero:  ; prevent divide by zero
+        ; undefined
+        xor r8b, r8b
+        jmp .hue_end
+
+    .red: ; (g - b)/c % 6
+        movzx r8b, dh
+        sub r8b, al
+
+        cvtsi2sd xmm0, r8b
+        divsd xmm0, xmm1
+
+        ._mod_six_loop:
+            comisd xmm0, 0x06
+            jb .hue_end
+            subsd xmm0, 0x06
+            jmp ._mod_six_loop
+
+    .green: ; (b - r)/c + 2
+        movzx r8b, al
+        sub r8b, dl
+
+        cvtsi2sd xmm0, r8b
+        divsd xmm0, xmm1
+
+        addsd xmm0, 0x02
+        jmp .hue_end
+    .blue: ; (r - g)/c + 4
+        movzx r8b, dl
+        sub r8b, dh
+
+        cvtsi2sd xmm0, r8b
+        divsd xmm0, xmm1
+
+        addsd xmm0, 0x04
+        jmp .hue_end
+
+    .hue_end:
+        movsd xmm2, 0x3c
+        mulsd xmm0, xmm2
+        cvttsd2si eax, xmm0
+
+    ; Saturation
+    ; c/max(r, g, b)
+    ; TODO: check for c = 0 -> s = 0
+    cvtsi2sd xmm0, bh
+    divsd xmm1, xmm0
+    cvttsd2si rbx, xmm1
+
+    ; Value
+    ; max(r, g, b)
+    movzx rcx, bh
+
+    ret
+
+
 ; loads image pixel data into a buffer
 ; expects file name in rdi
 get_image_data:
@@ -28,23 +121,19 @@ get_image_data:
     lea rsi, [rsp]      ; [ *x  ]   <- rsp
     lea rdx, [rsp + 0x4]; [ *y  ]   <- rsp + sizeof(i32)
     lea rcx, [rsp + 0x8]; [*comp]   <- rsp + 2*sizeof(i32)
-    xor r8, r8          ; req_comp = 0
+    mov r8, 3           ; req_comp = 3 (rgb)
     call stbi_load      ; rax = pixel byte buffer
     ; TODO: check stb errors
     ; TODO: free
 
     add rsp, 0x10
 
-    ; mov rax, 9          ; mmap
-    ; xor rdi, rdi        ; addr = NULL
-    ; moc rsi,
-
     pop rbp
     ret
 
 ; random number between 0 and rsi using 32 bit xorshift
 ; does not use `getrandom` syscall
-; returns a single integer in rax (eax because 32 bit width and height) based on seed in rdi
+; returns a single integer in rax (eax because 32 bit image dimensions) based on seed in rdi
 ; use division and its remainder to find x and y coordinate of the single number
 random:
     ; xorshift
@@ -99,6 +188,14 @@ _start:
     ; print firs pixel red component value
     mov rdi, print_hex
     movzx rsi, byte [rax]
+    xor rax, rax
+    call printf wrt ..plt
+
+
+    call random
+    ; prints a random number
+    mov rdi, print_hex
+    mov rsi, rax
     xor rax, rax
     call printf wrt ..plt
 
